@@ -1,0 +1,83 @@
+#!/bin/bash
+
+# ctfsrv-add
+# This script helps add files to the CTF web server directory.
+# It locates a file on the system and copies it to the specified subdirectory ('lin' or 'win').
+
+# --- Configuration ---
+# The root directory of the web server. This MUST match the location
+# used in the setup script.
+SERVER_LOCATION="/opt/ctf_server"
+
+# --- Functions ---
+
+# Function to display usage information
+usage() {
+    echo "Usage: $0 [lin|win] [filename]"
+    echo "  Example: $0 lin linpeas.sh"
+    echo "           $0 win winpeas.exe"
+    exit 1
+}
+
+# Function to handle errors and exit
+error_exit() {
+    echo "Error: $1" >&2
+    exit 1
+}
+
+# --- Main Script ---
+
+# Check for correct number of arguments
+if [ "$#" -ne 2 ]; then
+    usage
+fi
+
+# Assign arguments to variables
+TARGET_DIR="$1"
+FILENAME="$2"
+
+# Validate the target directory
+if [ "$TARGET_DIR" != "lin" ] && [ "$TARGET_DIR" != "win" ]; then
+    echo "Error: Invalid target directory. Please use 'lin' or 'win'."
+    usage
+fi
+
+# Check if the server base directory exists
+if [ ! -d "${SERVER_LOCATION}" ]; then
+    error_exit "Server directory ${SERVER_LOCATION} not found. Did you run the setup script?"
+fi
+
+# Update the locate database to find recently added files (optional but recommended)
+echo "[*] Updating locate database (may require sudo password)..."
+sudo updatedb
+
+# Find the file using locate
+echo "[*] Searching for '${FILENAME}' on the system..."
+# The grep ensures we match the exact filename at the end of a path
+# The -i makes locate case-insensitive
+FILE_PATHS=($(locate -i -r "/${FILENAME}$"))
+
+# Check if any files were found
+if [ ${#FILE_PATHS[@]} -eq 0 ]; then
+    error_exit "No files named '${FILENAME}' found on the system. Try 'sudo updatedb' and run the script again."
+fi
+
+# Display the found files and prompt the user for a choice
+echo "[+] Found the following files. Please select which one to copy:"
+select FILE_PATH in "${FILE_PATHS[@]}"; do
+    if [ -n "$FILE_PATH" ]; then
+        break
+    else
+        echo "Invalid selection. Please try again."
+    fi
+done
+
+# Define the destination path
+DESTINATION="${SERVER_LOCATION}/${TARGET_DIR}/${FILENAME}"
+
+# Copy the selected file
+echo "[*] Copying '${FILE_PATH}' to '${DESTINATION}'..."
+cp "${FILE_PATH}" "${DESTINATION}" || error_exit "Failed to copy the file."
+
+echo "[+] File '${FILENAME}' successfully added to the '${TARGET_DIR}' directory."
+echo "[+] It is now available at: http://<your-ip>:${SERVER_PORT}/${TARGET_DIR}/${FILENAME}"
